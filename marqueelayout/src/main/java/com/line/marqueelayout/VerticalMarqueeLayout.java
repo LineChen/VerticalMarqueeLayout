@@ -21,10 +21,9 @@ public class VerticalMarqueeLayout extends FrameLayout {
     private FloatEvaluator floatEval = new FloatEvaluator();
     private boolean runningAnimation = false;
     private int currentPosition = 0;
-    private int internal = 3000;
+    private int internal = 3000;//ms
     private View snap1, snap2;
     private ViewHolder snap1ViewHolder, snap2ViewHolder;
-
 
     public VerticalMarqueeLayout(@NonNull Context context) {
         this(context, null);
@@ -44,18 +43,35 @@ public class VerticalMarqueeLayout extends FrameLayout {
         stop();
     }
 
+    private AdapterDataObserver adapterDataObserver = new AdapterDataObserver() {
+        @Override
+        public void notifyChanged() {
+            initSnapView();
+            if (adapter.getItemCount() == 0) {
+                stop();
+            } else {
+                start();
+            }
+        }
+    };
+
     public void setAdapter(VerticalMarqueeAdapter adapter) {
         this.adapter = adapter;
-        int itemCount = adapter.getItemCount();
-        if (itemCount == 0) {
-            return;
-        }
-        snap1ViewHolder = adapter.onCreateViewHolder(this);
-        snap1 = snap1ViewHolder.getItemView();
-        snap2ViewHolder = adapter.onCreateViewHolder(this);
-        snap2 = snap2ViewHolder.getItemView();
+        adapter.setAdapterDataObserver(adapterDataObserver);
+        initSnapView();
+    }
 
-        if (itemCount == 1) {
+    private void initSnapView() {
+        int itemCount = adapter.getItemCount();
+        if (snap1 == null || snap2 == null) {
+            snap1ViewHolder = adapter.onCreateViewHolder(this);
+            snap1 = snap1ViewHolder.getItemView();
+            snap2ViewHolder = adapter.onCreateViewHolder(this);
+            snap2 = snap2ViewHolder.getItemView();
+        }
+        if (itemCount == 0) {
+            removeAllViews();
+        } else if (itemCount == 1) {
             adapter.onBindViewHolder(snap1ViewHolder, 0);
             adapter.onBindViewHolder(snap2ViewHolder, 0);
         } else if (itemCount >= 2) {
@@ -64,12 +80,14 @@ public class VerticalMarqueeLayout extends FrameLayout {
         }
 
         if (itemCount > 0) {
+            removeAllViews();
             addView(snap1);
             addView(snap2);
             currentPosition = (currentPosition + 1) % itemCount;
             snap2.post(new Runnable() {
                 @Override
                 public void run() {
+                    snap1.setTranslationY(0);
                     snap2.setTranslationY(getMeasuredHeight());
                 }
             });
@@ -86,12 +104,19 @@ public class VerticalMarqueeLayout extends FrameLayout {
         if (runningAnimation) {
             return;
         }
+        if (snap1 == null || snap2 == null) {
+            return;
+        }
         stop();
         postDelayed(translationTask, internal);
     }
 
     public void stop() {
         removeCallbacks(translationTask);
+    }
+
+    public void setInternal(int internal) {
+        this.internal = internal;
     }
 
     private Runnable translationTask = new Runnable() {
@@ -120,6 +145,10 @@ public class VerticalMarqueeLayout extends FrameLayout {
 
                 @Override
                 public void onAnimationEnd(Animator animation) {
+                    runningAnimation = false;
+                    if (adapter.getItemCount() == 0) {
+                        return;
+                    }
                     currentPosition += 1;
                     if (currentPosition > (adapter.getItemCount() - 1)) {
                         currentPosition = 0;
@@ -128,7 +157,6 @@ public class VerticalMarqueeLayout extends FrameLayout {
                     moveView.setTranslationY(getHeight() * 2);
                     adapter.onBindViewHolder(moveView == snap1 ? snap1ViewHolder : snap2ViewHolder, currentPosition);
                     postDelayed(translationTask, internal);
-                    runningAnimation = false;
                 }
             });
             animator.setDuration(getHeight() * 6)
